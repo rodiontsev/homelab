@@ -1,13 +1,13 @@
 ## Build image
 FROM debian:trixie-slim AS builder
 
-#ARG TRANSMISSION_VERSION=4.1.0
+#ARG TRANSMISSION_VERSION=4.1.1
 
 ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /tmp/transmission
 
-ADD https://github.com/transmission/transmission/releases/download/4.1.0/transmission-4.1.0.tar.xz .
+ADD https://github.com/transmission/transmission/releases/download/4.1.1/transmission-4.1.1.tar.xz .
 
 ## Install packages
 RUN apt-get update \
@@ -26,12 +26,12 @@ RUN apt-get update \
         xz-utils \
 ##
 ## Extract the archive
-    && tar -Jxpf transmission-4.1.0.tar.xz \
-    && cd transmission-4.1.0 \
+    && tar -Jxpf transmission-4.1.1.tar.xz \
+    && cd transmission-4.1.1 \
 ## 
 ## Build Transmission Daemon
-## Make some tea - Raspberry Pi Model B takes about 5 hours to complete a build,
-## Raspberry Pi 4 Model B finishes in 30 minutes.
+## Make some tea - Raspberry Pi Model B takes about 5 hours to complete a build.
+## Raspberry Pi 4 Model B builds in 30 minutes, so there is still time for a cup of tea.
     && cmake -B build -DCMAKE_BUILD_TYPE=Release \
         -DENABLE_DAEMON=ON \
         -DENABLE_UTILS=ON \

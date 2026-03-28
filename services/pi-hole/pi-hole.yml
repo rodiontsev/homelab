@@ -8,8 +8,8 @@ services:
       - "53:53/udp"
       - "80:80/tcp"
     volumes:
-      - "${APP_DIR}/pihole/etc/pihole:/etc/pihole"
-      - "${APP_DIR}/pihole/etc/dnsmasq.d:/etc/dnsmasq.d"
+      - "${APPDATA}/pihole/etc/pihole:/etc/pihole"
+      - "${APPDATA}/pihole/etc/dnsmasq.d:/etc/dnsmasq.d"
     environment:
       TZ: "${TZ}"
       WEBPASSWORD: "${PIHOLE_WEBPASSWORD}"

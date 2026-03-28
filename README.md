@@ -1,5 +1,14 @@
-# Dory
-A collection of Docker Compose files for configuring the Raspberry Pi swarm.
+# Homelab Bootstrap
+Deployment scripts, Dockerfiles, configuration, and notes for bootstrapping Raspberry Pi and Mini-PC in my homelab.
 
-* [pihole](docker-compose-pihole.yml) - Raspberry Pi 1 Model B+
-* [transmission](docker-compose-pirate.yml) - Raspberry Pi 1 Model B+
+## Quick Start
+* Create `.env` file &rarr; check [.env.example](.env.example) for reference.
+* Run `make transmission` to bootstrap transmission
+
+## Services
+* [Pi-hole](services/pi-hole/pi-hole.yml)
+* [Transmission](services/transmission/transmission.yml)
+
+## Requirements
+* Docker & Docker Compose
+* Make
