@@ -1,7 +1,7 @@
 services:
   # Transmission - BitTorrent Client
   transmission:
-    image: "transmission:4.1.0"
+    image: "transmission:4.1.1"
     container_name: "transmission"
     build:
       context: .
@@ -10,26 +10,25 @@ services:
         PUID: ${PUID}
         PGID: ${PGID}
     user: "${PUID}:${PGID}"
+    security_opt:
+      - "label=disable"
     ports:
       - "9091:9091"
       - "51413:51413"
       - "51413:51413/udp"
     volumes:
-      - type: "bind"
-        source: "/mnt/downloads"
-        target: "/home/transmission/downloads"
-        bind:
-          propagation: "shared"
-      - type: "bind"
-        source: "/mnt/ext"
-        target: "/home/transmission/incomplete"
-        bind:
-          propagation: "shared"
-      - "${APP_DIR}/transmission/config:/home/transmission/config"
-      - "${APP_DIR}/transmission/scripts:/home/transmission/scripts"
-      - "${APP_DIR}/transmission/watch:/home/transmission/watch"
+      - "/mnt/downloads:/home/transmission/downloads"
+      - "${APPDATA}/transmission/config:/home/transmission/config"
+      - "${APPDATA}/transmission/incomplete:/home/transmission/incomplete"
+      - "${APPDATA}/transmission/scripts:/home/transmission/scripts"
+      - "${APPDATA}/transmission/watch:/home/transmission/watch"
     environment:
       TZ: "${TZ}"
+      TELEGRAM_ADMIN_ID_FILE: /run/secrets/telegram_admin_id
+      TELEGRAM_API_TOKEN_FILE: /run/secrets/telegram_api_token
+    secrets:
+      - telegram_admin_id
+      - telegram_api_token
     networks:
       - "pi-net"
     restart: unless-stopped

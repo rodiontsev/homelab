@@ -1,0 +1,18 @@
+include:
+  - services/pi-hole/pi-hole.yml
+  - services/transmission/transmission.yml
+
+networks:
+  pi-net:
+    name: "pi-net"
+    driver: "bridge"
+    ipam:
+      config:
+        - subnet: "172.19.1.0/24"
+          gateway: "172.19.1.1"
+
+secrets:
+  telegram_admin_id:
+    file: secrets/telegram_admin_id.txt
+  telegram_api_token:
+    file: secrets/telegram_api_token.txt
