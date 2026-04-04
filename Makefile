@@ -19,6 +19,35 @@ NC := \033[0m # No Color
 
 .DEFAULT_GOAL := help
 
+# 1 - protocol, HTTP or HTTPS
+# 2 - port, 80 or 443
+# 3 - rule number based on the "sudo iptables -L INPUT -v -n --line-numbers" output, 5 for HTTP, 6 for HTTPS
+define open_port
+	@if ./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)"; then \
+		echo "$(GREEN)✓ Firewall for $(1) already configured$(NC)"; \
+	else \
+		echo "$(BLUE)• Configuring firewall for $(1)$(NC)"; \
+		sudo iptables -I INPUT $(3) -m state --state NEW -p tcp --dport $(2) -j ACCEPT; \
+		sudo iptables -L INPUT -v -n --line-numbers; \
+		read -p "Save configuration? [y/N] " confirm; \
+		if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
+			echo "$(BLUE)• Saving configuration$(NC)"; \
+			sudo netfilter-persistent save; \
+		fi; \
+	fi
+	@./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)" \
+		|| (echo "$(RED)✗ $(1) is still blocked - check the cloud provider firewall settings$(NC)" && exit 1)
+endef
+
+define certbot
+	@sudo certbot --non-interactive --agree-tos \
+		$(if $(filter test,$(1)),--dry-run,) \
+		--nginx \
+		--email $(LETS_ENCRYPT_EMAIL) \
+		--domain $(DOMAIN_NAME) \
+		--domain www.$(DOMAIN_NAME)
+endef
+
 help:
 	@echo "$(GREEN)Available targets:$(NC)"
 	@echo "$(BLUE)• setup-transmission$(NC)     - Set up Transmission"
@@ -31,8 +60,8 @@ validate-env:
 	@echo "$(BLUE)• Verifying .env file$(NC)"
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo "$(YELLOW)WARN: .env is created from .env.example"; \
-		echo "      Review and update the placeholder values before proceeding$(NC)"; \
+		echo "$(YELLOW)WARN: .env is created from .env.example$(NC)"; \
+		echo "      Review and update the placeholder values before proceeding."; \
 		exit 1; \
 	fi
 
@@ -114,9 +143,9 @@ setup-nginx: help-nginx validate-env
 	@systemctl status nginx --no-pager
 	@certbot --version
 
-	@echo "$(BLUE)• Creating web root and certbot directories$(NC)"
+	@echo "$(BLUE)• Creating web root and ACME directories$(NC)"
 	@sudo mkdir -p /var/www/$(DOMAIN_NAME)/html
-	@sudo mkdir -p /var/www/$(DOMAIN_NAME)/certbot/.well-known/acme-challenge
+	@sudo mkdir -p /var/www/$(DOMAIN_NAME)/acme/.well-known/acme-challenge
 
 	@echo "Hello, World!" \
 		| sudo tee /var/www/$(DOMAIN_NAME)/html/index.html > /dev/null
@@ -129,18 +158,6 @@ setup-nginx: help-nginx validate-env
 	@sudo sed 's|example.com|$(DOMAIN_NAME)|g' configs/nginx/sites-available/example.com \
 		| sudo tee /etc/nginx/sites-available/$(DOMAIN_NAME) > /dev/null
 
-	@echo "$(BLUE)• Creating temporary self-signed certificates$(NC)"
-	@sudo mkdir -p /etc/letsencrypt/live/$(DOMAIN_NAME)
-	@sudo cp /etc/ssl/certs/ssl-cert-snakeoil.pem /etc/letsencrypt/live/$(DOMAIN_NAME)/fullchain.pem
-	@sudo cp /etc/ssl/private/ssl-cert-snakeoil.key /etc/letsencrypt/live/$(DOMAIN_NAME)/privkey.pem
-
-	@echo "$(BLUE)• Downloading Certbot configuration$(NC)"
-	@sudo curl -sL "https://raw.githubusercontent.com/certbot/certbot/refs/tags/v5.4.0/certbot-nginx/src/certbot_nginx/_internal/tls_configs/options-ssl-nginx.conf" \
-		-o /etc/letsencrypt/options-ssl-nginx.conf
-
-	@sudo curl -sL "https://raw.githubusercontent.com/certbot/certbot/refs/tags/v5.4.0/certbot/src/certbot/ssl-dhparams.pem" \
-		-o /etc/letsencrypt/ssl-dhparams.pem
-
 	@echo "$(BLUE)• Disabling default site$(NC)"
 	@sudo rm -f /etc/nginx/sites-enabled/default
 
@@ -150,48 +167,21 @@ setup-nginx: help-nginx validate-env
 	@echo "$(BLUE)• Testing Nginx configuration$(NC)"
 	@sudo nginx -t || (echo "$(RED)✗ Nginx configuration test failed$(NC)" && exit 1)
 
-	@echo "$(BLUE)• Testing Let's Encrypt configuration (dry run)$(NC)"
-	@sudo certbot certonly \
-		--dry-run \
-		--webroot \
-		--webroot-path /var/www/$(DOMAIN_NAME)/certbot \
-		--domain $(DOMAIN_NAME) \
-		--domain www.$(DOMAIN_NAME)
-
-	@echo "$(BLUE)• Obtaining Let's Encrypt certificates$(NC)"
-	@sudo certbot -n --agree-tos \
-		--email $(LETS_ENCRYPT_EMAIL) \
-		--webroot \
-		--webroot-path /var/www/$(DOMAIN_NAME)/certbot \
-		--deploy-hook "systemctl reload nginx" \
-		--domain $(DOMAIN_NAME) \
-		--domain www.$(DOMAIN_NAME)
-
 	@echo "$(BLUE)• Restarting Nginx$(NC)"
 	@sudo systemctl restart nginx
 
 	@echo "$(BLUE)• Configuring firewall for HTTP and HTTPS$(NC)"	
-	@if ./scripts/check_port.sh "$(DOMAIN_NAME)" "80"; then \
-		echo "$(GREEN)✓ Firewall for HTTP already configured$(NC)"; \
-	else \
-		echo "$(BLUE)• Configuring firewall for HTTP$(NC)"; \
-		sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 80 -j ACCEPT; \
-		sudo iptables -L INPUT -v -n --line-numbers; \
+	$(call open_port,HTTP,80,5)
+	$(call open_port,HTTPS,443,6)
 
-		read -p "Press Enter to save HTTP configuration or Ctrl+C to abort..."
-		sudo netfilter-persistent save; \
-	fi
+	@echo "$(BLUE)• Testing Let's Encrypt configuration (dry run)$(NC)"
+	$(call certbot,test)
 
-	@if ./scripts/check_port.sh "$(DOMAIN_NAME)" "443"; then \
-		echo "$(GREEN)✓ Firewall for HTTPS already configured$(NC)"; \
-	else \
-		echo "$(BLUE)• Configuring firewall for HTTPS$(NC)"; \
-		sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 443 -j ACCEPT
-		sudo iptables -L INPUT -v -n --line-numbers
+	@echo "$(BLUE)• Obtaining Let's Encrypt certificates$(NC)"
+	$(call certbot)
 
-		read -p "Press Enter to save HTTPS configuration or Ctrl+C to abort..."
-		sudo netfilter-persistent save
-	fi
+	@echo "$(BLUE)• Reloading Nginx$(NC)"
+	@sudo systemctl reload nginx
 
 	@echo "$(BLUE)• Verifying redirects$(NC)"	
 	@./scripts/check_redirect.sh "http://$(DOMAIN_NAME)" "https://www.$(DOMAIN_NAME)" \

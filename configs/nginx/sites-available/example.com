@@ -16,10 +16,9 @@ server {
 
     include snippets/security.conf;
 
-    # Allow Let's Encrypt challenges
+    # Allow ACME (Automatic Certificate Management Environment) challenges
     location ^~ /.well-known/acme-challenge/ {
-        # Dedicated directory for challenges
-        root /var/www/example.com/certbot;
+        root /var/www/example.com/acme;
         try_files $uri =404;
     }
 
@@ -36,10 +35,8 @@ server {
 
     include snippets/security.conf;
 
-    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
+    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
 
     # Redirect to www
     return 301 https://www.example.com$request_uri;
@@ -55,10 +52,8 @@ server {
     root /var/www/example.com/html;
     index index.html;
 
-    ssl_certificate /etc/letsencrypt/live/example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/example.com/privkey.pem;
-    include /etc/letsencrypt/options-ssl-nginx.conf;
-    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
+    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
 
     location / {
         try_files $uri $uri/ =404;
