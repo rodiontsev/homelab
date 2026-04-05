@@ -1,0 +1,25 @@
+services:
+  # Torrentino - Telegram Bot
+  torrentino:
+    image: "torrentino:1.0.0"
+    container_name: "torrentino"
+    build:
+      context: .
+      dockerfile: "torrentino.Dockerfile"
+      args:
+        PUID: ${PUID}
+        PGID: ${PGID}
+    user: "${PUID}:${PGID}"
+    security_opt:
+      - "label=disable"
+    environment:
+      TZ: "${TZ}"
+      TRANSMISSION_URL: ${TRANSMISSION_URL}
+      TELEGRAM_ADMIN_ID_FILE: /run/secrets/telegram_admin_id
+      TELEGRAM_API_TOKEN_FILE: /run/secrets/telegram_api_token
+    secrets:
+      - telegram_admin_id
+      - telegram_api_token
+    networks:
+      - "pi-net"
+    restart: unless-stopped
