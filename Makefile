@@ -17,6 +17,8 @@ YELLOW := \033[0;33m
 BLUE := \033[0;34m
 NC := \033[0m # No Color
 
+NGINX_WEB_ROOT=/var/www/$(DOMAIN_NAME)
+
 .DEFAULT_GOAL := help
 
 # 1 - protocol name (HTTP or HTTPS)
@@ -48,7 +50,7 @@ define certbot
 	sudo certbot certonly \
 		$(if $(filter dry-run,$(1)),--dry-run,) \
 		--webroot \
-		--webroot-path /var/www/$(DOMAIN_NAME)/acme \
+		--webroot-path $(NGINX_WEB_ROOT)/acme \
 		--email $(LETS_ENCRYPT_EMAIL) \
 		--domain $(DOMAIN_NAME) \
 		--domain www.$(DOMAIN_NAME) \
@@ -109,7 +111,8 @@ setup-transmission: validate-env
 	@sudo systemctl enable --now mnt-downloads.automount
 
 	@echo "$(BLUE)• Verifying automount status$(NC)"
-	@systemctl status mnt-downloads.automount --no-pager
+	@systemctl is-active mnt-downloads.automount --quiet \
+		|| (echo "$(RED)✗ Automount unit not active$(NC)" && exit 1)
 
 	@echo "$(BLUE)• Creating configuration files$(NC)"
 	@mkdir -p $(APPDATA)/transmission
@@ -154,16 +157,18 @@ setup-nginx: help-nginx validate-env
 			ssl-cert
 
 	@echo "$(BLUE)• Verifying installations$(NC)"
-	@systemctl status nginx --no-pager
-	@certbot --version
+	@systemctl is-active nginx --quiet \
+		|| (echo "$(RED)✗ Nginx is not running$(NC)" && exit 1)
+	@command -v certbot > /dev/null 2>&1 \
+		|| (echo "$(RED)✗ certbot command not found$(NC)" && exit 1)
 
 	@echo "$(BLUE)• Creating web root and ACME directories$(NC)"
-	@sudo mkdir -p /var/www/$(DOMAIN_NAME)/html
-	@sudo mkdir -p /var/www/$(DOMAIN_NAME)/acme/.well-known/acme-challenge
-	@echo "Hello, World!" | sudo tee /var/www/$(DOMAIN_NAME)/html/index.html > /dev/null
+	@sudo mkdir -p $(NGINX_WEB_ROOT)/html
+	@sudo mkdir -p $(NGINX_WEB_ROOT)/acme/.well-known/acme-challenge
+	@echo "Hello, World!" | sudo tee $(NGINX_WEB_ROOT)/html/index.html > /dev/null
 
-	@sudo chown -R $(CURRENT_UID):$(CURRENT_GID) /var/www/$(DOMAIN_NAME)/html
-	@sudo chmod -R 755 /var/www/$(DOMAIN_NAME)
+	@sudo chown -R $(CURRENT_UID):$(CURRENT_GID) $(NGINX_WEB_ROOT)/html
+	@sudo chmod -R 755 $(NGINX_WEB_ROOT)
 
 	@echo "$(BLUE)• Installing Nginx SSL configuration$(NC)"
 	@sudo cp configs/nginx/snippets/security.conf /etc/nginx/snippets
@@ -179,10 +184,10 @@ setup-nginx: help-nginx validate-env
 	@echo "$(BLUE)• Creating Diffie-Hellman parameters file$(NC)"
 	@read -p "Use pre-generated DH parameters? (faster, generates new if no) [y/N] " confirm; \
 	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
-        echo "$(BLUE)• Using pre-generated DH parameters$(NC)"; \
+		echo "$(BLUE)• Using pre-generated DH parameters$(NC)"; \
 		sudo cp configs/nginx/ssl/dhparams.pem /etc/nginx/ssl; \
 	else \
-        echo "$(BLUE)• Generating new DH parameters (this may take several minutes)$(NC)"; \
+		echo "$(BLUE)• Generating new DH parameters (this may take several minutes)$(NC)"; \
 		sudo openssl dhparam -out /etc/nginx/ssl/dhparams.pem 4096; \
 	fi
 
