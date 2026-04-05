@@ -71,7 +71,7 @@ validate-env:
 	@echo "$(BLUE)• Verifying .env file$(NC)"
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo "$(YELLOW)‼︎ .env created from .env.example$(NC)"; \
+		echo "$(YELLOW)‼︎ Created .env from .env.example$(NC)"; \
 		echo "  Review and update placeholder values before proceeding."; \
 		exit 1; \
 	fi
@@ -128,7 +128,7 @@ start-transmission:
 	@echo "$(GREEN)✓ Transmission started$(NC)"
 
 help-nginx:
-	@echo "$(YELLOW)⚠ Before proceeding:$(NC)"
+	@echo "$(YELLOW)‼︎ Before proceeding:$(NC)"
 	@echo "  • Ensure ports 80 and 443 are open in the cloud firewall"
 	@echo "  • Verify DNS A/AAAA records point to this server"
 	@echo ""
