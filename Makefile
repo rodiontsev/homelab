@@ -156,6 +156,10 @@ stop-transmission:
 	@$(call log_header,Stopping Transmission)
 	@docker compose --file docker-compose.yml stop transmission
 
+stop-transmission:
+	@echo "$(GREEN)Stopping Transmission...$(NC)"
+	@docker compose --file docker-compose.yml stop transmission
+
 start-torrentino:
 	@$(call log_header,Starting Torrentino)
 	@docker compose --file docker-compose.yml up --detach --remove-orphans torrentino
@@ -163,6 +167,10 @@ start-torrentino:
 
 stop-torrentino:
 	@$(call log_header,Stopping Torrentino)
+	@docker compose --file docker-compose.yml stop torrentino
+
+stop-torrentino:
+	@echo "$(GREEN)Stopping Torrentino...$(NC)"
 	@docker compose --file docker-compose.yml stop torrentino
 
 help-nginx:
