@@ -22,28 +22,49 @@ NGINX_WEB_ROOT=/var/www/$(DOMAIN_NAME)
 
 .DEFAULT_GOAL := help
 
+# Logging functions
+define log_header
+	printf "$(GREEN)%s...$(NC)\n" "$(1)"
+endef
+
+define log_step
+	printf "$(BLUE)• %s$(NC)\n" "$(1)"
+endef
+
+define log_done
+	printf "$(GREEN)✓ %s$(NC)\n" "$(1)"
+endef
+
+define log_warn
+	printf "$(YELLOW)‼︎ %s$(NC)\n" "$(1)"
+endef
+
+define log_error
+	printf "$(RED)✗ %s$(NC)\n" "$(1)"
+endef
+
 # 1 - protocol name (HTTP or HTTPS)
 # 2 - port number (80 or 443)
 # 3 - iptables rule position (5 for HTTP, 6 for HTTPS)
 define open_port
-	@if ! ./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)"; then \
-		echo "$(BLUE)• Configuring firewall for $(1)$(NC)"; \
+	if ! ./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)"; then \
+		$(call log_step,Configuring firewall for $(1)); \
 		sudo iptables -I INPUT $(3) -m state --state NEW -p tcp --dport $(2) -j ACCEPT; \
 		sudo iptables -L INPUT -v -n --line-numbers; \
 		read -p "Save iptables configuration? [y/N] " confirm; \
 		if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
-			echo "$(BLUE)• Saving configuration$(NC)"; \
+			$(call log_step,Saving configuration); \
 			sudo netfilter-persistent save; \
 		else \
-			echo "$(YELLOW)‼︎ Configuration not saved - will be lost on reboot$(NC)"; \
+			$(call log_warn,Configuration not saved - will be lost on reboot); \
 		fi; \
 		if ! ./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)"; then \
-			echo "$(RED)✗ Port $(2) still blocked - check cloud firewall$(NC)"; \
+			$(call log_error,Port $(2) still blocked - check cloud firewall); \
 			exit 1; \
 		fi; \
-		echo "$(GREEN)✓ Port $(2) now accessible$(NC)"; \
+		$(call log_done,Port $(2) now accessible); \
 	else \
-		echo "$(GREEN)✓ Port $(2) already accessible$(NC)"; \
+		$(call log_done,Port $(2) already accessible); \
 	fi
 endef
 
@@ -61,125 +82,133 @@ define certbot
 endef
 
 help:
-	@echo "$(GREEN)Available targets:$(NC)"
-	@echo "$(BLUE)  • setup-transmission$(NC)     - Set up Transmission BitTorrent client"
-	@echo "$(BLUE)  • start-transmission$(NC)     - Start Transmission"
-	@echo "$(BLUE)  • stop-transmission$(NC)      - Stop Transmission"
-	@echo "$(BLUE)  • start-torrentino$(NC)       - Start Torrentino Telegram bot"
-	@echo "$(BLUE)  • stop-torrentino$(NC)        - Stop Torrentino"
-	@echo "$(BLUE)  • setup-nginx$(NC)            - Set up Nginx with Let's Encrypt SSL"
+	@printf "$(GREEN)Available targets:$(NC)"
+	@printf "$(BLUE)  • setup-transmission$(NC)     - Set up Transmission BitTorrent client"
+	@printf "$(BLUE)  • start-transmission$(NC)     - Start Transmission"
+	@printf "$(BLUE)  • stop-transmission$(NC)      - Stop Transmission"
+	@printf "$(BLUE)  • start-torrentino$(NC)       - Start Torrentino Telegram bot"
+	@printf "$(BLUE)  • stop-torrentino$(NC)        - Stop Torrentino"
+	@printf "$(BLUE)  • setup-nginx$(NC)            - Set up Nginx with Let's Encrypt SSL"
 
 validate-env:
-	@echo "$(GREEN)Verifying environment...$(NC)"
+	@$(call log_header,Verifying environment)
 
-	@echo "$(BLUE)• Verifying .env file$(NC)"
+	@$(call log_step,Verifying .env file)
 	@if [ ! -f .env ]; then \
 		cp .env.example .env; \
-		echo "$(YELLOW)‼︎ Created .env from .env.example$(NC)"; \
+		$(call log_warn,Created .env from .env.example); \
 		echo "  Review and update placeholder values before proceeding."; \
 		exit 1; \
 	fi
 
-	@echo "$(BLUE)• Verifying environment variables$(NC)"
+	@$(call log_step,Verifying environment variables)
 	@if [ "$(CURRENT_UID)" != "$(PUID)" ]; then \
-		echo "$(YELLOW)‼︎ id -u ($(CURRENT_UID)) differs from PUID in .env ($(PUID))$(NC)"; \
+		$(call log_warn,id -u ($(CURRENT_UID)) differs from PUID in .env ($(PUID))); \
 		echo "  Mismatched uid/gid may cause volume permission errors"; \
 		echo "  Update PUID/PGID in .env or re-run as the correct user"; \
 		exit 1; \
 	fi
 
-	@echo "$(GREEN)✓ Environment ready$(NC)"
+	@$(call log_done,Environment ready)
 
 setup-docker:
-	@echo "$(GREEN)Setting up Docker...$(NC)"
-	@echo "$(BLUE)• [TODO]$(NC)"
+	@$(call log_header,Setting up Docker)
+	@$(call log_warn,Not yet implemented)
 
 setup-ssh:
-	@echo "$(GREEN)Setting up SSH...$(NC)"
-	@echo "$(BLUE)• [TODO]$(NC)"
+	@$(call log_header,Setting up SSH)
+	@$(call log_warn,Not yet implemented)
 
 setup-transmission: validate-env
-	@echo "$(GREEN)Setting up Transmission...$(NC)"
+	@$(call log_header,Setting up Transmission)
 
-	@echo "$(BLUE)• Creating mount points$(NC)"
+	@$(call log_step,Creating mount points)
 	@sudo mkdir -p /mnt/downloads
 	@sudo chown $(CURRENT_UID):$(CURRENT_GID) /mnt/downloads
 	@sudo chmod 2775 /mnt/downloads
 
-	@echo "$(BLUE)• Installing automount units$(NC)"
+	@$(call log_step,Installing automount units)
 	@sudo cp configs/systemd/mnt-downloads.mount /etc/systemd/system/
 	@sudo cp configs/systemd/mnt-downloads.automount /etc/systemd/system/
 	@sudo systemctl daemon-reload
 
-	@echo "$(BLUE)• Enabling automount$(NC)"
+	@$(call log_step,Enabling automount)
 	@sudo systemctl enable --now mnt-downloads.automount
 
-	@echo "$(BLUE)• Verifying automount status$(NC)"
+	@$(call log_step,Verifying automount status)
 	@systemctl is-active mnt-downloads.automount --quiet \
-		|| (echo "$(RED)✗ Automount unit not active$(NC)" && exit 1)
+		|| ($(call log_error,Automount unit not active) && exit 1)
 
-	@echo "$(BLUE)• Creating configuration files$(NC)"
+	@$(call log_step,Creating configuration files)
 	@mkdir -p $(APPDATA)/transmission
 	@cp -r configs/transmission $(APPDATA)
 	@find $(APPDATA)/transmission -name ".gitkeep" -delete
 	@chmod -R 755 $(APPDATA)/transmission
 
-	@echo "$(GREEN)✓ Transmission ready$(NC)"
+	@$(call log_done,Transmission ready)
 
 start-transmission:
-	@echo "$(GREEN)Starting Transmission...$(NC)"
+	@$(call log_header,Starting Transmission)
 	@docker compose --file docker-compose.yml up --detach --remove-orphans transmission
-	@echo "$(GREEN)✓ Transmission started$(NC)"
+	@$(call log_done,Transmission started)
+
+stop-transmission:
+	@$(call log_header,Stopping Transmission)
+	@docker compose --file docker-compose.yml stop transmission
 
 stop-transmission:
 	@echo "$(GREEN)Stopping Transmission...$(NC)"
 	@docker compose --file docker-compose.yml stop transmission
 
 start-torrentino:
-	@echo "$(GREEN)Starting Torrentino...$(NC)"
+	@$(call log_header,Starting Torrentino)
 	@docker compose --file docker-compose.yml up --detach --remove-orphans torrentino
-	@echo "$(GREEN)✓ Torrentino started$(NC)"
+	@$(call log_done,Torrentino started)
+
+stop-torrentino:
+	@$(call log_header,Stopping Torrentino)
+	@docker compose --file docker-compose.yml stop torrentino
 
 stop-torrentino:
 	@echo "$(GREEN)Stopping Torrentino...$(NC)"
 	@docker compose --file docker-compose.yml stop torrentino
 
 help-nginx:
-	@echo "$(YELLOW)‼︎ Before proceeding:$(NC)"
+	@$(call log_warn,Before proceeding:)
 	@echo "  • Ensure ports 80 and 443 are open in the cloud firewall"
 	@echo "  • Verify DNS A/AAAA records point to this server"
 	@echo ""
-	@echo "$(BLUE)Cloud Provider Documentation:$(NC)"
+	@printf "$(BLUE)Cloud Provider Documentation:$(NC)"
 	@echo "  • Oracle Cloud: https://docs.oracle.com/en-us/iaas/Content/developer/apache-on-ubuntu/01oci-ubuntu-apache-summary.htm#add-ingress-rules"
 	@echo ""
 	@read -p "Continue? [y/N] " confirm; \
 	if [ "$$confirm" != "y" ] && [ "$$confirm" != "Y" ]; then \
-		echo "$(RED)✗ Aborted$(NC)"; \
+		$(call log_error,Aborted); \
 		exit 1; \
 	fi
 
 setup-nginx: help-nginx validate-env
-	@echo "$(GREEN)Setting up Nginx with Let's Encrypt SSL...$(NC)"
+	@$(call log_header,Setting up Nginx with Let's Encrypt SSL)
 
 	@test -x ./scripts/check_port.sh \
-		|| (echo "$(RED)✗ Script not found or not executable: scripts/check_port.sh$(NC)" && exit 1)
+		|| ($(call log_error,Script not found or not executable: scripts/check_port.sh) && exit 1)
 	@test -x ./scripts/check_redirect.sh \
-		|| (echo "$(RED)✗ Script not found or not executable: scripts/check_redirect.sh$(NC)" && exit 1)
+		|| ($(call log_error,Script not found or not executable: scripts/check_redirect.sh) && exit 1)
 
-	@echo "$(BLUE)• Installing Nginx and Certbot$(NC)"
+	@$(call log_step,Installing Nginx and Certbot)
 	@sudo apt-get update && \
 		sudo apt-get install --no-install-recommends -y \
 			nginx=1.24\* \
 			certbot=2.9\* \
 			ssl-cert
 
-	@echo "$(BLUE)• Verifying installations$(NC)"
+	@$(call log_step,Verifying installations)
 	@systemctl is-active nginx --quiet \
-		|| (echo "$(RED)✗ Nginx is not running$(NC)" && exit 1)
+		|| ($(call log_error,Nginx is not running) && exit 1)
 	@command -v certbot > /dev/null 2>&1 \
-		|| (echo "$(RED)✗ certbot command not found$(NC)" && exit 1)
+		|| ($(call log_error,certbot command not found) && exit 1)
 
-	@echo "$(BLUE)• Creating web root and ACME directories$(NC)"
+	@$(call log_step,Creating web root and ACME directories)
 	@sudo mkdir -p $(NGINX_WEB_ROOT)/html
 	@sudo mkdir -p $(NGINX_WEB_ROOT)/acme/.well-known/acme-challenge
 	@echo "Hello, World!" | sudo tee $(NGINX_WEB_ROOT)/html/index.html > /dev/null
@@ -187,66 +216,66 @@ setup-nginx: help-nginx validate-env
 	@sudo chown -R $(CURRENT_UID):$(CURRENT_GID) $(NGINX_WEB_ROOT)/html
 	@sudo chmod -R 755 $(NGINX_WEB_ROOT)
 
-	@echo "$(BLUE)• Installing Nginx SSL configuration$(NC)"
+	@$(call log_step,Installing Nginx SSL configuration)
 	@sudo cp configs/nginx/snippets/security.conf /etc/nginx/snippets
 	@sudo cp configs/nginx/snippets/ssl.conf /etc/nginx/snippets
 	@sudo sed 's|example.com|$(DOMAIN_NAME)|g' configs/nginx/sites-available/example.com \
 		| sudo tee /etc/nginx/sites-available/$(DOMAIN_NAME) > /dev/null
 
-	@echo "$(BLUE)• Creating temporary self-signed certificates$(NC)"
+	@$(call log_step,Creating temporary self-signed certificates)
 	@sudo mkdir -p /etc/nginx/ssl
 	@sudo ln -sf /etc/ssl/certs/ssl-cert-snakeoil.pem /etc/nginx/ssl/fullchain.pem
 	@sudo ln -sf /etc/ssl/private/ssl-cert-snakeoil.key /etc/nginx/ssl/privkey.pem
 
-	@echo "$(BLUE)• Creating Diffie-Hellman parameters file$(NC)"
+	@$(call log_step,Creating Diffie-Hellman parameters file)
 	@read -p "Use pre-generated DH parameters? (faster, generates new if no) [y/N] " confirm; \
 	if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
-		echo "$(BLUE)• Using pre-generated DH parameters$(NC)"; \
+		$(call log_step,Using pre-generated DH parameters); \
 		sudo cp configs/nginx/ssl/dhparams.pem /etc/nginx/ssl; \
 	else \
-		echo "$(BLUE)• Generating new DH parameters (this may take several minutes)$(NC)"; \
+		$(call log_step,Generating new DH parameters (this may take several minutes)); \
 		sudo openssl dhparam -out /etc/nginx/ssl/dhparams.pem 4096; \
 	fi
 
-	@echo "$(BLUE)• Disabling default site$(NC)"
+	@$(call log_step,Disabling default site)
 	@sudo rm -f /etc/nginx/sites-enabled/default
 
-	@echo "$(BLUE)• Enabling $(DOMAIN_NAME)$(NC)"
+	@$(call log_step,Enabling $(DOMAIN_NAME))
 	@sudo ln -sf /etc/nginx/sites-available/$(DOMAIN_NAME) /etc/nginx/sites-enabled/
 
-	@echo "$(BLUE)• Testing Nginx configuration$(NC)"
-	@sudo nginx -t || (echo "$(RED)✗ Nginx configuration test failed$(NC)" && exit 1)
+	@$(call log_step,Testing Nginx configuration)
+	@sudo nginx -t || ($(call log_error,Nginx configuration test failed) && exit 1)
 
-	@echo "$(BLUE)• Restarting Nginx$(NC)"
+	@$(call log_step,Restarting Nginx)
 	@sudo systemctl restart nginx
 
-	@echo "$(BLUE)• Configuring firewall for HTTP and HTTPS$(NC)"
-	$(call open_port,HTTP,80,5)
-	$(call open_port,HTTPS,443,6)
+	@$(call log_step,Configuring firewall for HTTP and HTTPS)
+	@$(call open_port,HTTP,80,5)
+	@$(call open_port,HTTPS,443,6)
 
-	@echo "$(BLUE)• Testing Let's Encrypt configuration (dry run)$(NC)"
+	@$(call log_step,Testing Let's Encrypt configuration (dry run))
 	@$(call certbot,dry-run)
 
-	@echo "$(BLUE)• Obtaining Let's Encrypt certificates$(NC)"
+	@$(call log_step,Obtaining Let's Encrypt certificates)
 	@$(call certbot)
 
-	@echo "$(BLUE)• Replacing self-signed certificates with Let's Encrypt certificates$(NC)"
+	@$(call log_step,Replacing self-signed certificates with Let's Encrypt certificates)
 	@sudo rm -f /etc/nginx/ssl/fullchain.pem
 	@sudo rm -f /etc/nginx/ssl/privkey.pem
 	@sudo ln -sf /etc/letsencrypt/live/$(DOMAIN_NAME)/fullchain.pem /etc/nginx/ssl/fullchain.pem
 	@sudo ln -sf /etc/letsencrypt/live/$(DOMAIN_NAME)/privkey.pem /etc/nginx/ssl/privkey.pem
 
-	@echo "$(BLUE)• Reloading Nginx$(NC)"
+	@$(call log_step,Reloading Nginx)
 	@sudo systemctl reload nginx
 
-	@echo "$(BLUE)• Verifying redirects$(NC)"
+	@$(call log_step,Verifying redirects)
 	@./scripts/check_redirect.sh "http://$(DOMAIN_NAME)" "https://www.$(DOMAIN_NAME)" \
-		|| (echo "$(RED)✗ Redirect failed: http://$(DOMAIN_NAME) → https://www.$(DOMAIN_NAME)$(NC)" && exit 1)
+		|| ($(call log_error,Redirect failed: http://$(DOMAIN_NAME) → https://www.$(DOMAIN_NAME)) && exit 1)
 
 	@./scripts/check_redirect.sh "http://www.$(DOMAIN_NAME)" "https://www.$(DOMAIN_NAME)" \
-		|| (echo "$(RED)✗ Redirect failed: http://www.$(DOMAIN_NAME) → https://www.$(DOMAIN_NAME)$(NC)" && exit 1)
+		|| ($(call log_error,Redirect failed: http://www.$(DOMAIN_NAME) → https://www.$(DOMAIN_NAME)) && exit 1)
 
 	@./scripts/check_redirect.sh "https://$(DOMAIN_NAME)" "https://www.$(DOMAIN_NAME)" \
-		|| (echo "$(RED)✗ Redirect failed: https://$(DOMAIN_NAME) → https://www.$(DOMAIN_NAME)$(NC)" && exit 1)
+		|| ($(call log_error,Redirect failed: https://$(DOMAIN_NAME) → https://www.$(DOMAIN_NAME)) && exit 1)
 
-	@echo "$(GREEN)✓ Nginx ready with SSL certificates$(NC)"
+	@$(call log_done,Nginx ready with SSL certificates)
