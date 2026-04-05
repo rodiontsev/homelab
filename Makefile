@@ -40,12 +40,16 @@ define open_port
 endef
 
 define certbot
-	@sudo certbot --non-interactive --agree-tos \
-		$(if $(filter test,$(1)),--dry-run,) \
-		--nginx \
+	@sudo certbot certonly \
+		$(if $(filter test,$(1)) --dry-run,) \
+		--webroot \
+		--webroot-path /var/www/$(DOMAIN_NAME)/acme \
 		--email $(LETS_ENCRYPT_EMAIL) \
 		--domain $(DOMAIN_NAME) \
-		--domain www.$(DOMAIN_NAME)
+		--domain www.$(DOMAIN_NAME) \
+		--deploy-hook "systemctl reload nginx" \
+		--non-interactive \
+		--agree-tos
 endef
 
 help:
@@ -136,7 +140,6 @@ setup-nginx: help-nginx validate-env
 		sudo apt-get install --no-install-recommends -y \
 			nginx=1.24\* \
 			certbot=2.9\* \
-			python3-certbot-nginx=2.9\* \
 			ssl-cert
 
 	@echo "$(BLUE)• Verifying installations$(NC)"
@@ -155,8 +158,17 @@ setup-nginx: help-nginx validate-env
 
 	@echo "$(BLUE)• Installing Nginx SSL configuration$(NC)"
 	@sudo cp configs/nginx/snippets/security.conf /etc/nginx/snippets
+	@sudo cp configs/nginx/snippets/ssl.conf /etc/nginx/snippets
 	@sudo sed 's|example.com|$(DOMAIN_NAME)|g' configs/nginx/sites-available/example.com \
 		| sudo tee /etc/nginx/sites-available/$(DOMAIN_NAME) > /dev/null
+
+	@echo "$(BLUE)• Creating temporary self-signed certificates$(NC)"
+	@sudo ln -sf /etc/ssl/certs/ssl-cert-snakeoil.pem /etc/nginx/ssl/fullchain.pem
+	@sudo ln -sf /etc/ssl/private/ssl-cert-snakeoil.key /etc/nginx/ssl/privkey.pem
+
+	@echo "$(BLUE)• Creating Diffie-Hellman parameters file$(NC)"
+	@sudo mkdir -p /etc/nginx/ssl
+	@sudo openssl dhparam -out /etc/nginx/ssl/dhparam.pem 4096
 
 	@echo "$(BLUE)• Disabling default site$(NC)"
 	@sudo rm -f /etc/nginx/sites-enabled/default
@@ -179,6 +191,12 @@ setup-nginx: help-nginx validate-env
 
 	@echo "$(BLUE)• Obtaining Let's Encrypt certificates$(NC)"
 	$(call certbot)
+
+	@echo "$(BLUE)• Replacing self-signed certificates with Let's Encrypt certificates$(NC)"
+	@sudo rm -f /etc/nginx/ssl/fullchain.pem
+	@sudo rm -f /etc/nginx/ssl/privkey.pem
+	@sudo ln -sf /etc/letsencrypt/live/$(DOMAIN)/fullchain.pem /etc/nginx/ssl/fullchain.pem
+	@sudo ln -sf /etc/letsencrypt/live/$(DOMAIN)/privkey.pem /etc/nginx/ssl/privkey.pem
 
 	@echo "$(BLUE)• Reloading Nginx$(NC)"
 	@sudo systemctl reload nginx
