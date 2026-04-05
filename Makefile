@@ -1,8 +1,8 @@
 .PHONY: help validate-env \
 	setup-docker \
 	setup-ssh \
-	setup-transmission start-transmission \
-	start-torrentino \
+	setup-transmission start-transmission stop-transmission \
+	start-torrentino stop-torrentino \
 	setup-nginx help-nginx
 
 # Load .env so variables are available in all targets
@@ -64,7 +64,9 @@ help:
 	@echo "$(GREEN)Available targets:$(NC)"
 	@echo "$(BLUE)  • setup-transmission$(NC)     - Set up Transmission BitTorrent client"
 	@echo "$(BLUE)  • start-transmission$(NC)     - Start Transmission"
+	@echo "$(BLUE)  • stop-transmission$(NC)      - Stop Transmission"
 	@echo "$(BLUE)  • start-torrentino$(NC)       - Start Torrentino Telegram bot"
+	@echo "$(BLUE)  • stop-torrentino$(NC)        - Stop Torrentino"
 	@echo "$(BLUE)  • setup-nginx$(NC)            - Set up Nginx with Let's Encrypt SSL"
 
 validate-env:
@@ -129,10 +131,18 @@ start-transmission:
 	@docker compose --file docker-compose.yml up --detach --remove-orphans transmission
 	@echo "$(GREEN)✓ Transmission started$(NC)"
 
+stop-transmission:
+	@echo "$(GREEN)Stopping Transmission...$(NC)"
+	@docker compose --file docker-compose.yml stop transmission
+
 start-torrentino:
 	@echo "$(GREEN)Starting Torrentino...$(NC)"
 	@docker compose --file docker-compose.yml up --detach --remove-orphans torrentino
 	@echo "$(GREEN)✓ Torrentino started$(NC)"
+
+stop-torrentino:
+	@echo "$(GREEN)Stopping Torrentino...$(NC)"
+	@docker compose --file docker-compose.yml stop torrentino
 
 help-nginx:
 	@echo "$(YELLOW)‼︎ Before proceeding:$(NC)"
