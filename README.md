@@ -3,7 +3,7 @@ Deployment scripts, Dockerfiles, configuration, and notes for bootstrapping Rasp
 
 ## Quick Start
 * Create `.env` file &rarr; check [.env.example](.env.example) for reference.
-* Run `make transmission` to bootstrap transmission
+* Run `make setup-transmission` to set up Transmission
 
 ## Services
 * [Pi-hole](services/pi-hole/pi-hole.yml)
