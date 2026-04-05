@@ -1,6 +1,7 @@
 include:
   - services/pi-hole/pi-hole.yml
   - services/transmission/transmission.yml
+  - services/torrentino/torrentino.yml
 
 networks:
   pi-net:
