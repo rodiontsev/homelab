@@ -1,4 +1,5 @@
 .PHONY: help validate-env \
+	setup-automount-units \
 	setup-docker \
 	setup-ssh \
 	setup-transmission start-transmission stop-transmission \
@@ -19,6 +20,7 @@ BLUE := \033[0;34m
 NC := \033[0m # No Color
 
 NGINX_WEB_ROOT=/var/www/$(DOMAIN_NAME)
+DOCKER_VERSION ?= 29.4.0
 
 .DEFAULT_GOAL := help
 
@@ -83,10 +85,11 @@ endef
 
 help:
 	@printf "$(GREEN)Available targets:$(NC)"
+	@printf "$(BLUE)  • setup-docker$(NC)           - Set up Docker"
 	@printf "$(BLUE)  • setup-transmission$(NC)     - Set up Transmission BitTorrent client"
 	@printf "$(BLUE)  • start-transmission$(NC)     - Start Transmission"
 	@printf "$(BLUE)  • stop-transmission$(NC)      - Stop Transmission"
-	@printf "$(BLUE)  • start-torrentino$(NC)       - Start Torrentino Telegram bot"
+	@printf "$(BLUE)  • start-torrentino$(NC)       - Start Torrentino Telegram Bot for Transmission"
 	@printf "$(BLUE)  • stop-torrentino$(NC)        - Stop Torrentino"
 	@printf "$(BLUE)  • setup-nginx$(NC)            - Set up Nginx with Let's Encrypt SSL"
 
@@ -113,14 +116,25 @@ validate-env:
 
 setup-docker:
 	@$(call log_header,Setting up Docker)
-	@$(call log_warn,Not yet implemented)
+
+	@$(call log_step,Installing Docker)
+	@# Set umask 0022 to ensure correct keyring permissions
+	@# /usr/share/keyrings/docker-archive-keyring.gpg
+	@sudo sh -c 'umask 0022 && curl --silent --show-error --fail https://get.docker.com/ | sh -s -- --version $(DOCKER_VERSION)' \
+		|| ($(call log_error,Docker installation failed) && exit 1)
+
+	@$(call log_step,Verifying Docker service)
+	@systemctl is-active docker --quiet \
+		|| ($(call log_error,Docker is not running) && exit 1)
+
+	@$(call log_done,Docker ready)
 
 setup-ssh:
 	@$(call log_header,Setting up SSH)
 	@$(call log_warn,Not yet implemented)
 
-setup-transmission: validate-env
-	@$(call log_header,Setting up Transmission)
+setup-automount-units:
+	@$(call log_header,Setting up automount units)
 
 	@$(call log_step,Creating mount points)
 	@sudo mkdir -p /mnt/downloads
@@ -139,6 +153,9 @@ setup-transmission: validate-env
 	@systemctl is-active mnt-downloads.automount --quiet \
 		|| ($(call log_error,Automount unit not active) && exit 1)
 
+setup-transmission: validate-env setup-automount-units
+	@$(call log_header,Setting up Transmission)
+
 	@$(call log_step,Creating configuration files)
 	@mkdir -p $(APPDATA)/transmission
 	@cp -r configs/transmission $(APPDATA)
@@ -156,10 +173,6 @@ stop-transmission:
 	@$(call log_header,Stopping Transmission)
 	@docker compose --file docker-compose.yml stop transmission
 
-stop-transmission:
-	@echo "$(GREEN)Stopping Transmission...$(NC)"
-	@docker compose --file docker-compose.yml stop transmission
-
 start-torrentino:
 	@$(call log_header,Starting Torrentino)
 	@docker compose --file docker-compose.yml up --detach --remove-orphans torrentino
@@ -167,10 +180,6 @@ start-torrentino:
 
 stop-torrentino:
 	@$(call log_header,Stopping Torrentino)
-	@docker compose --file docker-compose.yml stop torrentino
-
-stop-torrentino:
-	@echo "$(GREEN)Stopping Torrentino...$(NC)"
 	@docker compose --file docker-compose.yml stop torrentino
 
 help-nginx:
