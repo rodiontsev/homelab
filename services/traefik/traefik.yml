@@ -1,0 +1,26 @@
+services:
+  # Traefik - Reverse Proxy
+  traefik:
+    image: "traefik:3.6.13"
+    container_name: "traefik"
+    command: 
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --entrypoints.http.address=:80
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=pi-net
+    user: "${PUID}:${PGID}"
+    security_opt:
+      - no-new-privileges:true
+      - "label=disable"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    environment:
+      TZ: "${TZ}"
+    networks:
+      - "pi-net"
+    restart: unless-stopped
