@@ -6,9 +6,18 @@ Deployment scripts, Dockerfiles, configuration, and notes for bootstrapping Rasp
 * Run `make setup-transmission` to set up Transmission
 
 ## Services
-* [Pi-hole](services/pi-hole/pi-hole.yml)
-* [Transmission](services/transmission/transmission.yml)
+* [Pi-hole](services/pi-hole/pi-hole.yml) – Network-wide Ad Blocking
+* [Torrentino](services/torrentino/torrentino.yml) – Telegram Bot for Transmission 
+* [Traefik](services/traefik/traefik.yml) – Reverse Proxy
+* [Transmission](services/transmission/transmission.yml) – BitTorrent Client
 
 ## Requirements
-* Docker & Docker Compose
 * Make
+```bash
+sudo apt-get install --no-install-recommends -y make
+```
+
+* Docker & Docker Compose
+```bash
+make setup-docker
+```

@@ -1,5 +1,6 @@
 include:
   - services/pi-hole/pi-hole.yml
+  - services/traefik/traefik.yml
   - services/transmission/transmission.yml
   - services/torrentino/torrentino.yml
 

@@ -29,6 +29,10 @@ services:
     secrets:
       - telegram_admin_id
       - telegram_api_token
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.transmission.entryPoints=http"
+      - "traefik.http.routers.transmission.rule=PathRegexp(`^/transmission(/?.*)`)"
     networks:
       - "pi-net"
     restart: unless-stopped
