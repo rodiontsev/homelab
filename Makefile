@@ -59,7 +59,7 @@ endef
 
 # 1 - port number
 # 2 - protocol (tcp or udp)
-define open_port 
+define open_port
 	$(call log_step,Opening port $(1)/$(2) on local firewall);
 
 	local port="$1"
@@ -166,7 +166,7 @@ setup-docker:
 
 	@$(call log_done,Docker ready)
 
-setup-outline-vpn: validate-env setup-docker 
+setup-outline-vpn: validate-env setup-docker
 	@$(call log_header,Setting up Outline VPN)
 
 	@$(call log_step,Generating Management port)
