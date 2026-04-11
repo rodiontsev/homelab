@@ -1,6 +1,7 @@
 .PHONY: help validate-env \
 	setup-automount-units \
 	setup-docker \
+	setup-outline-vpn \
 	setup-ssh \
 	setup-transmission start-transmission stop-transmission \
 	start-torrentino stop-torrentino \
@@ -45,13 +46,34 @@ define log_error
 	printf "$(RED)✗ %s$(NC)\n" "$(1)"
 endef
 
-# 1 - protocol name (HTTP or HTTPS)
-# 2 - port number (80 or 443)
-# 3 - iptables rule position (5 for HTTP, 6 for HTTPS)
-define open_port
-	if ! ./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)"; then \
-		$(call log_step,Configuring firewall for $(1)); \
-		sudo iptables -I INPUT $(3) -m state --state NEW -p tcp --dport $(2) -j ACCEPT; \
+define config_firewall
+	# Return if the chain is already attached
+	sudo iptables -C INPUT -j OPEN_PORTS 2>/dev/null && return 0
+
+	# Create OPEN_PORTS chain
+	sudo iptables -N OPEN_PORTS
+
+	# Attach OPEN_PORTS chain in position 5 - should be before reject
+	sudo iptables -I INPUT 5 -j OPEN_PORTS
+endef
+
+# 1 - port number
+# 2 - protocol (tcp or udp)
+define open_port 
+	$(call log_step,Opening port $(1)/$(2) on local firewall);
+
+	local port="$1"
+	local protocol="${2:-tcp}" # Default to tcp
+
+	if [ "$(protocol)" != "tcp" ] && [ "$(protocol)" != "udp" ]; then \
+		$(call log_error,Invalid protocol $(protocol) - use tcp or udp); \
+		exit 1; \
+	fi
+
+	config_firewall
+
+	if ! sudo iptables -C OPEN_PORTS -p "$(protocol)" --dport "$(port)" -j ACCEPT; then \
+		sudo iptables -A OPEN_PORTS -p "$(protocol)" --dport "$(port)" -j ACCEPT; \
 		sudo iptables -L INPUT -v -n --line-numbers; \
 		read -p "Save iptables configuration? [y/N] " confirm; \
 		if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
@@ -60,13 +82,27 @@ define open_port
 		else \
 			$(call log_warn,Configuration not saved - will be lost on reboot); \
 		fi; \
-		if ! ./scripts/check_port.sh "$(DOMAIN_NAME)" "$(2)"; then \
-			$(call log_error,Port $(2) still blocked - check cloud firewall); \
-			exit 1; \
-		fi; \
-		$(call log_done,Port $(2) now accessible); \
 	else \
-		$(call log_done,Port $(2) already accessible); \
+		$(call log_done,Port $(1)/$(2) open); \
+	fi
+endef
+
+# 1 - host
+# 2 - port number
+define check_port_warn
+	if ./scripts/check_port.sh "$(1)" "$(2)"; then \
+		$(call log_done,Port $(2) accessible); \
+	else \
+		$(call log_warn,Port $(2) blocked - check cloud firewall); \
+	fi
+endef
+
+define check_port_fail
+	if ./scripts/check_port.sh "$(1)" "$(2)"; then \
+		$(call log_done,Port $(2) accessible); \
+	else \
+		$(call log_error,Port $(2) blocked - check cloud firewall); \
+		exit 1; \
 	fi
 endef
 
@@ -86,6 +122,7 @@ endef
 help:
 	@printf "$(GREEN)Available targets:$(NC)"
 	@printf "$(BLUE)  • setup-docker$(NC)           - Set up Docker"
+	@printf "$(BLUE)  • setup-outline-vpn$(NC)      - Set up Outline VPN"
 	@printf "$(BLUE)  • setup-transmission$(NC)     - Set up Transmission BitTorrent client"
 	@printf "$(BLUE)  • start-transmission$(NC)     - Start Transmission"
 	@printf "$(BLUE)  • stop-transmission$(NC)      - Stop Transmission"
@@ -128,6 +165,41 @@ setup-docker:
 		|| ($(call log_error,Docker is not running) && exit 1)
 
 	@$(call log_done,Docker ready)
+
+setup-outline-vpn: validate-env setup-docker 
+	@$(call log_header,Setting up Outline VPN)
+
+	@$(call log_step,Generating Management port)
+	$(eval OUTLINEVPN_API_PORT := $(shell awk 'BEGIN { srand(); print int(1024 + rand() * 64511) }'))
+
+	@$(call log_step,Opening Management port on local firewall)
+	@$(call open_port,$(OUTLINEVPN_API_PORT),tcp)
+
+	@$(call log_step,Opening Access key port on local firewall)
+	@$(call open_port,$(OUTLINEVPN_DOMAIN_NAME),443,tcp)
+	@$(call open_port,$(OUTLINEVPN_DOMAIN_NAME),443,udp)
+
+	@if [ "$(OUTLINEVPN_DOMAIN_NAME)" != "" ]; then \
+		$(call check_port_warn,$(OUTLINEVPN_DOMAIN_NAME),443); \
+		$(call check_port_warn,$(OUTLINEVPN_DOMAIN_NAME),$(OUTLINEVPN_API_PORT)); \
+	fi
+
+	@$(call log_step,Creating directory for persistent state)
+	@mkdir -p $(APPDATA)/outline
+
+	@$(call log_step,Installing Outline VPN)
+	@sudo sh -c ' \
+			SHADOWBOX_DIR="$(APPDATA)/outline" \
+			WATCHTOWER_REFRESH_SECONDS="$(OUTLINEVPN_WATCHTOWER_REFRESH_SEC)" \
+			SB_DEFAULT_SERVER_NAME="$(OUTLINEVPN_SERVER_NAME)" \
+			curl --silent --show-error --fail \
+				https://raw.githubusercontent.com/OutlineFoundation/outline-apps/master/server_manager/install_scripts/install_server.sh \
+			| sh -s -- \
+				$(ifneq $(strip $(OUTLINEVPN_DOMAIN_NAME)) ""),--hostname $(OUTLINEVPN_DOMAIN_NAME),) \
+				--api-port $(OUTLINEVPN_API_PORT) \
+				--keys-port 443' \
+		|| ($(call log_error,Outline VPN installation failed) && exit 1)
+	@$(call log_done,Outline VPN ready)
 
 setup-ssh:
 	@$(call log_header,Setting up SSH)
@@ -258,9 +330,14 @@ setup-nginx: help-nginx validate-env
 	@$(call log_step,Restarting Nginx)
 	@sudo systemctl restart nginx
 
-	@$(call log_step,Configuring firewall for HTTP and HTTPS)
-	@$(call open_port,HTTP,80,5)
-	@$(call open_port,HTTPS,443,6)
+	@$(call log_step,Opening HTTP and HTTPS ports on local firewall)
+	@# HTTP Port
+	@$(call open_port,80,tcp)
+	@$(call check_port_fail,$(DOMAIN_NAME),80)
+
+	@# HTTPS Port
+	@$(call open_port,443,tcp)
+	@$(call check_port_fail,$(DOMAIN_NAME),443)
 
 	@$(call log_step,Testing Let's Encrypt configuration (dry run))
 	@$(call certbot,dry-run)
