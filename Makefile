@@ -23,6 +23,8 @@ NC := \033[0m # No Color
 NGINX_WEB_ROOT=/var/www/$(DOMAIN_NAME)
 DOCKER_VERSION ?= 29.4.0
 
+OUTLINE_VPN_WATCHTOWER_REFRESH_SEC=86400
+
 .DEFAULT_GOAL := help
 
 # Logging functions
@@ -81,15 +83,7 @@ endef
 
 # 1 - host
 # 2 - port number
-define check_port_warn
-	if ./scripts/check_port.sh "$(1)" "$(2)"; then \
-		$(call log_done,Port $(2) accessible); \
-	else \
-		$(call log_warn,Port $(2) blocked - check cloud firewall); \
-	fi
-endef
-
-define check_port_fail
+define check_port
 	if ./scripts/check_port.sh "$(1)" "$(2)"; then \
 		$(call log_done,Port $(2) accessible); \
 	else \
@@ -171,25 +165,15 @@ setup-outline-vpn:
 	@$(call open_port,443,tcp)
 	@$(call open_port,443,udp)
 
-	@if [ -n "$(OUTLINEVPN_DOMAIN_NAME)" ]; then \
-		$(call check_port_warn,$(OUTLINEVPN_DOMAIN_NAME),443); \
-		$(call check_port_warn,$(OUTLINEVPN_DOMAIN_NAME),$(OUTLINEVPN_API_PORT)); \
-	fi
-
 	@$(call log_step,Creating directory for persistent state)
 	@mkdir -p $(APPDATA)/outline
 
 	@$(call log_step,Installing Outline VPN)
-	@OUTLINEVPN_DOMAIN_NAME_ARG=""; \
-	if [ -n "$(OUTLINEVPN_DOMAIN_NAME)" ]; then \
-		OUTLINEVPN_DOMAIN_NAME_ARG="--hostname $(OUTLINEVPN_DOMAIN_NAME)"; \
-	fi; \
-	export SHADOWBOX_DIR="$(APPDATA)/outline"; \
-	export WATCHTOWER_REFRESH_SECONDS="$(OUTLINEVPN_WATCHTOWER_REFRESH_SEC)"; \
-	export SB_DEFAULT_SERVER_NAME="$(OUTLINEVPN_SERVER_NAME)"; \
+	@export SHADOWBOX_DIR="$(APPDATA)/outline"; \
+	export WATCHTOWER_REFRESH_SECONDS="$(OUTLINE_VPN_WATCHTOWER_REFRESH_SEC)"; \
 	curl --silent --show-error --fail \
-		https://raw.githubusercontent.com/OutlineFoundation/outline-app/master/server_manager/install_scripts/install_server.sh \
-	| sudo --preserve-env bash -s -- $$OUTLINEVPN_DOMAIN_NAME_ARG --api-port $(OUTLINEVPN_API_PORT) --keys-port 443 \
+		https://raw.githubusercontent.com/OutlineFoundation/outline-apps/master/server_manager/install_scripts/install_server.sh \
+	| sudo --preserve-env bash -s -- --api-port $(OUTLINEVPN_API_PORT) --keys-port 443 \
 		|| ($(call log_error,Outline VPN installation failed) && exit 1)
 
 	@$(call log_done,Outline VPN ready)
@@ -326,11 +310,11 @@ setup-nginx: help-nginx validate-env
 	@$(call log_step,Opening HTTP and HTTPS ports on local firewall)
 	@# HTTP Port
 	@$(call open_port,80,tcp)
-	@$(call check_port_fail,$(DOMAIN_NAME),80)
+	@$(call check_port,$(DOMAIN_NAME),80)
 
 	@# HTTPS Port
 	@$(call open_port,443,tcp)
-	@$(call check_port_fail,$(DOMAIN_NAME),443)
+	@$(call check_port,$(DOMAIN_NAME),443)
 
 	@$(call log_step,Testing Let's Encrypt configuration (dry run))
 	@$(call certbot,dry-run)
