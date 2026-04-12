@@ -47,34 +47,28 @@ define log_error
 endef
 
 define config_firewall
-	# Return if the chain is already attached
-	sudo iptables -C INPUT -j OPEN_PORTS 2>/dev/null && return 0
-
-	# Create OPEN_PORTS chain
-	sudo iptables -N OPEN_PORTS
-
-	# Attach OPEN_PORTS chain in position 5 - should be before reject
-	sudo iptables -I INPUT 5 -j OPEN_PORTS
+	if ! sudo iptables -L OPEN_PORTS -n 2>/dev/null; then \
+		sudo iptables -N OPEN_PORTS || exit 1; \
+	fi; \
+	if ! sudo iptables -C INPUT -j OPEN_PORTS 2>/dev/null; then \
+		sudo iptables -I INPUT 5 -j OPEN_PORTS || exit 1; \
+	fi
 endef
 
 # 1 - port number
 # 2 - protocol (tcp or udp)
 define open_port
 	$(call log_step,Opening port $(1)/$(2) on local firewall);
-
-	local port="$1"
-	local protocol="${2:-tcp}" # Default to tcp
-
-	if [ "$(protocol)" != "tcp" ] && [ "$(protocol)" != "udp" ]; then \
-		$(call log_error,Invalid protocol $(protocol) - use tcp or udp); \
+	if [ "$(2)" != "tcp" ] && [ "$(2)" != "udp" ]; then \
+		$(call log_error,Invalid protocol $(2) - use tcp or udp); \
 		exit 1; \
-	fi
-
-	config_firewall
-
-	if ! sudo iptables -C OPEN_PORTS -p "$(protocol)" --dport "$(port)" -j ACCEPT; then \
-		sudo iptables -A OPEN_PORTS -p "$(protocol)" --dport "$(port)" -j ACCEPT; \
-		sudo iptables -L INPUT -v -n --line-numbers; \
+	fi; \
+	$(call config_firewall); \
+	if sudo iptables -C OPEN_PORTS -p "$(2)" --dport "$(1)" -j ACCEPT 2>/dev/null; then \
+		$(call log_done,Port $(1)/$(2) already open); \
+	else \
+		sudo iptables -A OPEN_PORTS -p "$(2)" --dport "$(1)" -j ACCEPT || exit 1; \
+		sudo iptables -L INPUT -v -n --line-numbers && echo && sudo iptables -L OPEN_PORTS -v -n --line-numbers; \
 		read -p "Save iptables configuration? [y/N] " confirm; \
 		if [ "$$confirm" = "y" ] || [ "$$confirm" = "Y" ]; then \
 			$(call log_step,Saving configuration); \
@@ -82,8 +76,6 @@ define open_port
 		else \
 			$(call log_warn,Configuration not saved - will be lost on reboot); \
 		fi; \
-	else \
-		$(call log_done,Port $(1)/$(2) open); \
 	fi
 endef
 
@@ -166,7 +158,7 @@ setup-docker:
 
 	@$(call log_done,Docker ready)
 
-setup-outline-vpn: validate-env setup-docker
+setup-outline-vpn:
 	@$(call log_header,Setting up Outline VPN)
 
 	@$(call log_step,Generating Management port)
@@ -176,10 +168,10 @@ setup-outline-vpn: validate-env setup-docker
 	@$(call open_port,$(OUTLINEVPN_API_PORT),tcp)
 
 	@$(call log_step,Opening Access key port on local firewall)
-	@$(call open_port,$(OUTLINEVPN_DOMAIN_NAME),443,tcp)
-	@$(call open_port,$(OUTLINEVPN_DOMAIN_NAME),443,udp)
+	@$(call open_port,443,tcp)
+	@$(call open_port,443,udp)
 
-	@if [ "$(OUTLINEVPN_DOMAIN_NAME)" != "" ]; then \
+	@if [ -n "$(OUTLINEVPN_DOMAIN_NAME)" ]; then \
 		$(call check_port_warn,$(OUTLINEVPN_DOMAIN_NAME),443); \
 		$(call check_port_warn,$(OUTLINEVPN_DOMAIN_NAME),$(OUTLINEVPN_API_PORT)); \
 	fi
@@ -188,17 +180,18 @@ setup-outline-vpn: validate-env setup-docker
 	@mkdir -p $(APPDATA)/outline
 
 	@$(call log_step,Installing Outline VPN)
-	@sudo sh -c ' \
-			SHADOWBOX_DIR="$(APPDATA)/outline" \
-			WATCHTOWER_REFRESH_SECONDS="$(OUTLINEVPN_WATCHTOWER_REFRESH_SEC)" \
-			SB_DEFAULT_SERVER_NAME="$(OUTLINEVPN_SERVER_NAME)" \
-			curl --silent --show-error --fail \
-				https://raw.githubusercontent.com/OutlineFoundation/outline-apps/master/server_manager/install_scripts/install_server.sh \
-			| sh -s -- \
-				$(ifneq $(strip $(OUTLINEVPN_DOMAIN_NAME)) ""),--hostname $(OUTLINEVPN_DOMAIN_NAME),) \
-				--api-port $(OUTLINEVPN_API_PORT) \
-				--keys-port 443' \
+	@OUTLINEVPN_DOMAIN_NAME_ARG=""; \
+	if [ -n "$(OUTLINEVPN_DOMAIN_NAME)" ]; then \
+		OUTLINEVPN_DOMAIN_NAME_ARG="--hostname $(OUTLINEVPN_DOMAIN_NAME)"; \
+	fi; \
+	export SHADOWBOX_DIR="$(APPDATA)/outline"; \
+	export WATCHTOWER_REFRESH_SECONDS="$(OUTLINEVPN_WATCHTOWER_REFRESH_SEC)"; \
+	export SB_DEFAULT_SERVER_NAME="$(OUTLINEVPN_SERVER_NAME)"; \
+	curl --silent --show-error --fail \
+		https://raw.githubusercontent.com/OutlineFoundation/outline-app/master/server_manager/install_scripts/install_server.sh \
+	| sudo --preserve-env bash -s -- $$OUTLINEVPN_DOMAIN_NAME_ARG --api-port $(OUTLINEVPN_API_PORT) --keys-port 443 \
 		|| ($(call log_error,Outline VPN installation failed) && exit 1)
+
 	@$(call log_done,Outline VPN ready)
 
 setup-ssh:
