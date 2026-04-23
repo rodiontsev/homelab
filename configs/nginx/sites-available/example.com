@@ -36,8 +36,8 @@ server {
     include snippets/security.conf;
     include snippets/ssl.conf;
 
-    ssl_certificate /etc/ssl/certs/ssl-cert-snakeoil.pem;
-    ssl_certificate_key /etc/ssl/private/ssl-cert-snakeoil.key;
+    ssl_certificate /etc/nginx/ssl/fullchain.pem;
+    ssl_certificate_key /etc/nginx/ssl/privkey.pem;
     ssl_dhparam /etc/nginx/ssl/dhparams.pem;
 
     # Redirect to www
